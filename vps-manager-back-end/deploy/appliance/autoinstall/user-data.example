@@ -1,0 +1,34 @@
+#cloud-config
+# Ubuntu autoinstall — esqueleto para ISO/USB do Central Apps Hub.
+# NAO use em producao sem revisar storage/identity/rede.
+#
+# Como gerar ISO (resumo): ver README.md nesta pasta.
+autoinstall:
+  version: 1
+  locale: pt_BR.UTF-8
+  keyboard:
+    layout: br
+  identity:
+    hostname: central-apps-hub
+    # Troque antes de gravar a ISO
+    username: hubadmin
+    # senha "hubadmin" — gere com: openssl passwd -6
+    password: "$6$rounds=4096$ChangeMeSalt$ReplaceWithRealHash"
+  ssh:
+    install-server: true
+    allow-pw: true
+  storage:
+    layout:
+      name: lvm
+  packages:
+    - curl
+    - ca-certificates
+    - git
+  late-commands:
+    # Copia o pacote do meio de instalacao (ajuste o caminho do volume)
+    - curtin in-target -- mkdir -p /opt/hub-installer
+    # Exemplo: se o tarball estiver em /cdrom/central-apps-hub-appliance.tar.gz
+    # - curtin in-target -- tar -xzf /cdrom/central-apps-hub-appliance.tar.gz -C /opt/hub-installer
+    # - curtin in-target -- bash /opt/hub-installer/*/INSTALAR.sh
+    - curtin in-target -- touch /opt/hub-installer/RUN_INSTALL_MANUALLY
+  shutdown: reboot

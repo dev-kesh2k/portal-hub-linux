@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Controle do Central Apps Hub no appliance
+set -euo pipefail
+
+OPT_ROOT="/opt/central-apps-hub"
+BACKEND="${OPT_ROOT}/backend"
+FRONTEND="${OPT_ROOT}/frontend"
+SERVICE="hub"
+
+usage() {
+  cat <<EOF
+Uso: hubctl <comando>
+
+  status       Status do servico + containers + health
+  start        Sobe o Hub (systemd)
+  stop         Para o Hub
+  restart      Reinicia o Hub
+  logs         journalctl -u hub -f
+  build        Rebuild backend (+ frontend se existir)
+  publish-ui   Publica dist do frontend no Apache
+  infra        Sobe Postgres + Apache
+  doctor       Checagens basicas
+EOF
+}
+
+need_root() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    echo "Este comando precisa de root (sudo hubctl $*)" >&2
+    exit 1
+  fi
+}
+
+cmd_status() {
+  systemctl --no-pager --full status "$SERVICE" || true
+  echo
+  docker ps --filter name=postgres --filter name=apache --filter name=cloudflared \
+    --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+  echo
+  curl -sf http://127.0.0.1:3001/health && echo || echo "API: offline"
+  curl -sf -o /dev/null -w "Apache: %{http_code}\n" http://127.0.0.1:8081/central-apps-hub/ || true
+}
+
+cmd_build() {
+  need_root "$@"
+  local user
+  user="$(stat -c %U "$BACKEND" 2>/dev/null || echo hub)"
+  runuser -u "$user" -- bash -lc "cd '$BACKEND' && npm run build"
+  if [[ -f "$FRONTEND/package.json" ]]; then
+    runuser -u "$user" -- bash -lc "cd '$FRONTEND' && npm run build"
+  fi
+}
+
+cmd_publish_ui() {
+  need_root "$@"
+  local user
+  user="$(stat -c %U "$BACKEND" 2>/dev/null || echo hub)"
+  if [[ ! -d "$FRONTEND/dist" ]]; then
+    runuser -u "$user" -- bash -lc "cd '$FRONTEND' && npm run build"
+  fi
+  mkdir -p /hub-apps/apache/central-apps-hub
+  rsync -a --delete "$FRONTEND/dist/" /hub-apps/apache/central-apps-hub/
+  chown -R "${user}:${user}" /hub-apps/apache/central-apps-hub
+  echo "UI publicada em /hub-apps/apache/central-apps-hub/"
+}
+
+cmd_infra() {
+  need_root "$@"
+  local user
+  user="$(stat -c %U "$BACKEND" 2>/dev/null || echo hub)"
+  runuser -u "$user" -- bash -lc 'cd /opt/postgres && docker compose --env-file .env up -d --remove-orphans'
+  runuser -u "$user" -- bash -lc 'cd /opt/apache && docker compose up -d --remove-orphans'
+}
+
+cmd_doctor() {
+  echo "node: $(node -v 2>/dev/null || echo missing)"
+  echo "docker: $(docker -v 2>/dev/null || echo missing)"
+  echo "hub user groups: $(id hub 2>/dev/null || echo missing)"
+  echo "backend: $BACKEND ($( [[ -f $BACKEND/dist/index.js ]] && echo built || echo NO_DIST ))"
+  echo "env: $( [[ -f $BACKEND/.env ]] && echo ok || echo MISSING )"
+  echo "runtime: $(grep -E '^HUB_RUNTIME=' "$BACKEND/.env" 2>/dev/null || echo unset)"
+  systemctl is-enabled "$SERVICE" 2>/dev/null || true
+  systemctl is-active "$SERVICE" 2>/dev/null || true
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "$cmd" in
+    status) cmd_status ;;
+    start) need_root; systemctl start "$SERVICE" ;;
+    stop) need_root; systemctl stop "$SERVICE" ;;
+    restart) need_root; systemctl restart "$SERVICE" ;;
+    logs) journalctl -u "$SERVICE" -f "$@" ;;
+    build) cmd_build "$@" ;;
+    publish-ui) cmd_publish_ui "$@" ;;
+    infra) cmd_infra "$@" ;;
+    doctor) cmd_doctor ;;
+    ""|-h|--help) usage ;;
+    *) echo "Comando desconhecido: $cmd" >&2; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

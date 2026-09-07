@@ -1,0 +1,55 @@
+#cloud-config
+# Autoinstall Ubuntu Server 24.04 + agenda instalacao do Central Apps Hub no 1o boot.
+# Hostname/senha: altere antes de gravar a midia se quiser.
+#
+# Usuario do SO (SSH/console): hubadmin / ChangemeHub2026!
+# Usuario do portal Hub: gerado em /opt/central-apps-hub/FIRST_LOGIN.txt apos o 1o boot
+autoinstall:
+  version: 1
+  locale: pt_BR.UTF-8
+  keyboard:
+    layout: br
+    variant: abnt2
+  timezone: America/Sao_Paulo
+  identity:
+    hostname: central-apps-hub
+    username: hubadmin
+    password: "***REMOVIDO***"
+  ssh:
+    install-server: true
+    allow-pw: true
+  storage:
+    layout:
+      name: lvm
+  packages:
+    - curl
+    - ca-certificates
+    - rsync
+  user-data:
+    package_update: true
+    package_upgrade: false
+  late-commands:
+    # Copia o pacote do Hub do meio de instalacao (/cdrom) para o disco instalado
+    - mkdir -p /target/opt/hub-installer /target/usr/local/lib/central-apps-hub
+    - |
+      if [ -d /cdrom/hub-payload ]; then
+        cp -a /cdrom/hub-payload/. /target/opt/hub-installer/
+      elif [ -f /cdrom/hub-payload.tar.gz ]; then
+        cp /cdrom/hub-payload.tar.gz /target/opt/hub-installer/
+      fi
+    - |
+      if [ -f /cdrom/nocloud/hub-bootstrap.sh ]; then
+        cp /cdrom/nocloud/hub-bootstrap.sh /target/usr/local/lib/central-apps-hub/hub-bootstrap.sh
+      elif [ -f /cdrom/hub-payload/vps-manager-back-end/deploy/appliance/hub-bootstrap.sh ]; then
+        cp /cdrom/hub-payload/vps-manager-back-end/deploy/appliance/hub-bootstrap.sh /target/usr/local/lib/central-apps-hub/hub-bootstrap.sh
+      fi
+    - chmod 755 /target/usr/local/lib/central-apps-hub/hub-bootstrap.sh || true
+    - |
+      if [ -f /cdrom/nocloud/hub-bootstrap.service ]; then
+        cp /cdrom/nocloud/hub-bootstrap.service /target/etc/systemd/system/hub-bootstrap.service
+      elif [ -f /cdrom/hub-payload/vps-manager-back-end/deploy/appliance/hub-bootstrap.service ]; then
+        cp /cdrom/hub-payload/vps-manager-back-end/deploy/appliance/hub-bootstrap.service /target/etc/systemd/system/hub-bootstrap.service
+      fi
+    - curtin in-target -- systemctl enable hub-bootstrap.service
+    - echo "Hub bootstrap agendado para o primeiro boot" > /target/opt/hub-installer/README.txt
+  shutdown: reboot
