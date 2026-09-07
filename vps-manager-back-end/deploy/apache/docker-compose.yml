@@ -1,0 +1,39 @@
+name: hub-apache
+
+services:
+  apache:
+    image: httpd:2.4-alpine
+    container_name: apache
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:${WINHOST:-host-gateway}"
+    ports:
+      - "8081:80"
+    volumes:
+      - /hub-apps/apache:/usr/local/apache2/htdocs
+      - /opt/apache/hub.conf:/usr/local/apache2/conf/extra/hub.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "httpd -t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sed -i \
+          -e 's/#LoadModule proxy_module/LoadModule proxy_module/' \
+          -e 's/#LoadModule proxy_http_module/LoadModule proxy_http_module/' \
+          -e 's/#LoadModule proxy_wstunnel_module/LoadModule proxy_wstunnel_module/' \
+          -e 's/#LoadModule rewrite_module/LoadModule rewrite_module/' \
+          -e 's/#LoadModule autoindex_module/LoadModule autoindex_module/' \
+          /usr/local/apache2/conf/httpd.conf
+        grep -q 'conf/extra/hub.conf' /usr/local/apache2/conf/httpd.conf || echo 'Include conf/extra/hub.conf' >> /usr/local/apache2/conf/httpd.conf
+        httpd-foreground

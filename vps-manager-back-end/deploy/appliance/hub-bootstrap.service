@@ -1,0 +1,17 @@
+[Unit]
+Description=Central Apps Hub — instalacao no primeiro boot
+Documentation=file:///opt/central-apps-hub/backend/deploy/appliance/README.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/opt/central-apps-hub/backend/dist/index.js
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/central-apps-hub/hub-bootstrap.sh
+RemainAfterExit=yes
+TimeoutStartSec=0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

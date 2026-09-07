@@ -1,0 +1,36 @@
+[Unit]
+Description=Central Apps Hub API
+Documentation=file:///opt/central-apps-hub/backend/deploy/appliance/README.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=hub
+Group=hub
+WorkingDirectory=/opt/central-apps-hub/backend
+Environment=NODE_ENV=production
+Environment=HUB_RUNTIME=appliance
+EnvironmentFile=-/opt/central-apps-hub/backend/.env
+Environment=NODE_OPTIONS=--max-old-space-size=384
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+# Hardening basico
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/central-apps-hub /hub-apps /opt/apache /opt/postgres /var/log/central-apps-hub /tmp
+SupplementaryGroups=docker
+# Terminal PTY
+DeviceAllow=/dev/pts rw
+DeviceAllow=/dev/ptmx rw
+
+StandardOutput=append:/var/log/central-apps-hub/hub.log
+StandardError=append:/var/log/central-apps-hub/hub.log
+
+[Install]
+WantedBy=multi-user.target
